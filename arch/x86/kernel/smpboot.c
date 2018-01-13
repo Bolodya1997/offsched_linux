@@ -1592,8 +1592,8 @@ void native_cpu_die(unsigned int cpu)
 
 void play_dead_common(void)
 {
-	idle_task_exit();
-	reset_lazy_tlbstate();
+/*	idle_task_exit();
+	reset_lazy_tlbstate();*/	/* OFFSCHED */
 
 	/* Ack it */
 	(void)cpu_report_death();
@@ -1710,6 +1710,9 @@ void native_play_dead(void)
 	set_offsched_dead(cpu);
 	if (is_offsched_callback(cpu))
 		run_offsched_callback();
+
+	idle_task_exit();
+        reset_lazy_tlbstate();
 
 	mwait_play_dead();	/* Only returns on failure */
 	if (cpuidle_play_dead())

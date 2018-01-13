@@ -573,6 +573,7 @@ struct offsched_rq {
 	struct list_head head;
 	unsigned int nr_running;
 	bool active;
+	struct task_struct *next;
 };
 
 #ifdef CONFIG_SMP
@@ -2027,11 +2028,3 @@ static inline void cpufreq_update_this_cpu(struct rq *rq, unsigned int flags) {}
 #else /* arch_scale_freq_capacity */
 #define arch_scale_freq_invariant()	(false)
 #endif
-
-
-/*
- * OFFSCHED:
- * Starting method of offsched scheduling policy. Must be called after the
- * schedule shutdown.
- */
-extern void offsched_start(struct rq *rq);

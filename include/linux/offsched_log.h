@@ -3,6 +3,8 @@
 
 extern void offsched_log_init(void);
 
-extern int offsched_log(const char *entry);
+extern int offsched_log_str(const char *str);
+extern int offsched_log_raw(void *ptr, int bytes);
+extern void offsched_log_nl(void);
 
 #endif

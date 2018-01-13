@@ -10,16 +10,12 @@
 
 #include "sched.h"
 
-#define offsched_condition true
-#define __offsched_log(entry) \
-	if (offsched_condition) \
-		offsched_log(entry)
-
 void __init init_offsched_rq(struct offsched_rq *offsched_rq)
 {
 	INIT_LIST_HEAD(&offsched_rq->head);
 	offsched_rq->nr_running = 0;
 	offsched_rq->active = false;
+	offsched_rq->next = NULL;
 }
 
 void offsched_begin(int cpu)
@@ -44,7 +40,8 @@ void offsched_end(int cpu)
 }
 EXPORT_SYMBOL_GPL(offsched_end);
 
-static inline struct task_struct *task_of_offsched(struct offsched_entity *offsched)
+static inline
+struct task_struct *task_of_offsched(struct offsched_entity *offsched)
 {
 	return container_of(offsched, struct task_struct, offsched);
 }
@@ -59,19 +56,35 @@ struct task_struct *offsched_task(int cpu)
 }
 EXPORT_SYMBOL_GPL(offsched_task);
 
+static inline
+struct offsched_entity *pick_next_offsched(struct offsched_rq *offsched_rq,
+	struct offsched_entity *offsched)
+{
+	if (!list_is_last(&offsched->list, &offsched_rq->head))
+		return list_next_entry(offsched, list);
+
+	return list_first_entry(&offsched_rq->head,
+		struct offsched_entity, list);
+}
+
 static void enqueue_task_offsched(struct rq *rq, struct task_struct *p,
 	int flags)
 {
 	struct offsched_entity *offsched = &p->offsched;
 	struct offsched_rq *offsched_rq = &rq->offsched;
 
-	list_add(&offsched->list, &offsched_rq->head);
+	list_add_tail(&offsched->list, &offsched_rq->head);
 	offsched_rq->nr_running++;
 
 	if (offsched_rq->active)
 		add_nr_running(rq, 1);
 
-	__offsched_log("OFFSCHED_C: enqueue_task()");
+	if (offsched_rq->nr_running == 1)
+		offsched_rq->next = p;
+
+	offsched_log_str("OFFSCHED_C: enqueue_task(): ");
+	offsched_log_raw(&p, sizeof(p));
+	offsched_log_nl();
 }
 
 static void dequeue_task_offsched(struct rq *rq, struct task_struct *p,
@@ -79,6 +92,12 @@ static void dequeue_task_offsched(struct rq *rq, struct task_struct *p,
 {
 	struct offsched_entity *offsched = &p->offsched;
 	struct offsched_rq *offsched_rq = &rq->offsched;
+	struct offsched_entity *next_offsched;
+
+	if (offsched_rq->next == p) {
+		next_offsched = pick_next_offsched(offsched_rq, offsched);
+		offsched_rq->next = task_of_offsched(next_offsched);
+	}
 
 	list_del(&offsched->list);
 	offsched_rq->nr_running--;
@@ -86,7 +105,12 @@ static void dequeue_task_offsched(struct rq *rq, struct task_struct *p,
 	if (offsched_rq->active)
 		sub_nr_running(rq, 1);
 
-	__offsched_log("OFFSCHED_C: dequeue_task()");
+	if (offsched_rq->nr_running == 0)
+		offsched_rq->next = NULL;
+
+	offsched_log_str("OFFSCHED_C: dequeue_task(): ");
+	offsched_log_raw(&p, sizeof(p));
+	offsched_log_nl();
 }
 
 static void yield_task_offsched(struct rq *rq)
@@ -101,30 +125,26 @@ static void check_preempt_curr_offsched (struct rq *rq, struct task_struct *p,
 static struct task_struct *pick_next_task_offsched(struct rq *rq,
 	struct task_struct *prev, struct rq_flags *rf)
 {
-	struct task_struct *next;
-	struct offsched_entity *prev_offsched, *next_offsched;
-	int cpu = smp_processor_id();
+	struct offsched_rq *offsched_rq = &rq->offsched;
+	struct task_struct *next = offsched_rq->next;
+	struct offsched_entity *next_next_offsched;
 
-	if (!rq->offsched.active || rq->offsched.nr_running == 0)
+	if (!offsched_rq->active)
 		return NULL;
 
-        __offsched_log("OFFSCHED_C: pick_next_task(): begin");
+	offsched_log_str("OFFSCHED_C: pick_next_task(): begin");
+	offsched_log_nl();
 
-	if (prev->sched_class != &offsched_sched_class) {
-		next = offsched_task(cpu);
-	} else {
-		prev_offsched = &prev->offsched;
-		if (list_is_last(&prev_offsched->list, &rq->offsched.head)) {
-			next = offsched_task(cpu);
-		} else {
-			next_offsched = list_next_entry(prev_offsched, list);
-			next = task_of_offsched(next_offsched);
-		}
+	if (next) {
+		next_next_offsched = pick_next_offsched(offsched_rq,
+			&next->offsched);
+		offsched_rq->next = task_of_offsched(next_next_offsched);
 	}
-
-        __offsched_log("OFFSCHED_C: pick_next_task(): end");
-
 	put_prev_task(rq, prev);
+
+	offsched_log_str("OFFSCHED_C: pick_next_task(): ");
+	offsched_log_raw(&next, sizeof(next));
+	offsched_log_nl();
 
 	return next;
 }
@@ -161,7 +181,8 @@ static void set_curr_task_offsched(struct rq *rq)
 static void task_tick_offsched(struct rq *rq, struct task_struct *p,
 	int queued)
 {
-        __offsched_log("OFFSCHED_C: task_tick()");
+	offsched_log_str("OFFSCHED_C: task_tick()");
+	offsched_log_nl();
 }
 
 static void switched_to_offsched(struct rq *this_rq, struct task_struct *task)

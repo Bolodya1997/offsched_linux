@@ -40,9 +40,13 @@
 #include <linux/offsched.h>
 #include <linux/offsched_log.h>
 #define offsched_condition (cpu_offsched(smp_processor_id()))
-#define __offsched_log(entry) \
-	if (unlikely(offsched_condition)) \
-		offsched_log(entry)
+#define __offsched_log(str) \
+	do \
+		if (unlikely(offsched_condition)) { \
+			offsched_log_str(str); \
+			offsched_log_nl(); \
+		} \
+	while (0)
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
@@ -3315,8 +3319,6 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 		if (unlikely(p == RETRY_TASK))
 			goto again;
 
-		__offsched_log("CORE_C: pick_next_task(): optimization");
-
 		/* Assumes fair_sched_class->next == idle_sched_class */
 		if (unlikely(!p))
 			p = idle_sched_class.pick_next_task(rq, prev, rf);
@@ -3326,9 +3328,7 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 	}
 
 again:
-	__offsched_log("CORE_C: pick_next_task(): loop");
 	for_each_class(class) {
-                __offsched_log("CORE_C: pick_next_task(): iter");
 		p = class->pick_next_task(rq, prev, rf);
 		if (p) {
 			if (unlikely(p == RETRY_TASK))
@@ -3446,6 +3446,17 @@ static void __sched notrace __schedule(bool preempt)
 	}
 
 	next = pick_next_task(rq, prev, &rf);
+	if (unlikely(offsched_condition)) {
+		/* OFFSCHED: next task ptr */
+		offsched_log_str("CORE_C: __schedule(): pick ptr ");
+		offsched_log_raw(&next, sizeof(next));
+		offsched_log_nl();
+
+		/* OFFSCHED: idle */
+		offsched_log_str("CORE_C: __schedule(): idle ptr ");
+		offsched_log_raw(&rq->idle, sizeof(rq->idle));
+		offsched_log_nl();
+	}
 	clear_tsk_need_resched(prev);
 	clear_preempt_need_resched();
 
@@ -5637,9 +5648,7 @@ void idle_task_exit(void)
 		switch_mm(mm, &init_mm, current);
 		finish_arch_post_lock_switch();
 	}
-
-	if (!is_offsched_callback(cpu))	/* OFFSCHED */
-		mmdrop(mm);
+	mmdrop(mm);
 }
 
 /*
