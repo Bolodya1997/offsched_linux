@@ -5,6 +5,8 @@
  *
  *  Copyright (C) 1991-2002  Linus Torvalds
  */
+#define DEBUG
+
 #include <linux/sched.h>
 #include <linux/sched/clock.h>
 #include <uapi/linux/sched/types.h>
@@ -46,6 +48,11 @@
 			offsched_log_str(str); \
 			offsched_log_nl(); \
 		} \
+	while (0)
+#define offsched_debug(cpu, flag, str, ...) \
+	do \
+		if (unlikely(offsched_flags[flag]) && cpu == 2) \
+			pr_debug(str, ##__VA_ARGS__); \
 	while (0)
 
 #define CREATE_TRACE_POINTS
@@ -925,6 +932,7 @@ void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
 			}
 		}
 	}
+	offsched_debug(rq->cpu, 1, "ttwu: need_resched\t%d\n", test_tsk_need_resched(rq->curr));
 
 	/*
 	 * A queue event has occurred, and we're going to schedule.  In
@@ -1981,6 +1989,7 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	unsigned long flags;
 	int cpu, success = 0;
 
+	offsched_debug(task_cpu(p), 1, "ttwu: 1\n");
 	/*
 	 * If we are going to wake up a thread waiting for CONDITION we
 	 * need to ensure that CONDITION=1 done by the caller can not be
@@ -1991,6 +2000,7 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	raw_spin_lock_irqsave(&p->pi_lock, flags);
 	if (!(p->state & state))
 		goto out;
+	offsched_debug(task_cpu(p), 1, "ttwu: 2\n");
 
 	trace_sched_waking(p);
 
@@ -2022,6 +2032,7 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	smp_rmb();
 	if (p->on_rq && ttwu_remote(p, wake_flags))
 		goto stat;
+	offsched_debug(task_cpu(p), 1, "ttwu: 3\n");
 
 #ifdef CONFIG_SMP
 	/*
@@ -3394,6 +3405,9 @@ static void __sched notrace __schedule(bool preempt)
 	rq = cpu_rq(cpu);
 	prev = rq->curr;
 
+	if (unlikely(cpu == 2))
+		++offsched_count;
+
 	__offsched_log("CORE_C: __schedule()");
 
 	schedule_debug(prev);
@@ -3446,17 +3460,8 @@ static void __sched notrace __schedule(bool preempt)
 	}
 
 	next = pick_next_task(rq, prev, &rf);
-	if (unlikely(offsched_condition)) {
-		/* OFFSCHED: next task ptr */
-		offsched_log_str("CORE_C: __schedule(): pick ptr ");
-		offsched_log_raw(&next, sizeof(next));
-		offsched_log_nl();
-
-		/* OFFSCHED: idle */
-		offsched_log_str("CORE_C: __schedule(): idle ptr ");
-		offsched_log_raw(&rq->idle, sizeof(rq->idle));
-		offsched_log_nl();
-	}
+	offsched_debug(rq->cpu, 0, "sched: curr\t%llx\n", (unsigned long long int) prev);
+	offsched_debug(rq->cpu, 0, "sched: next\t%llx\n", (unsigned long long int) next);
 	clear_tsk_need_resched(prev);
 	clear_preempt_need_resched();
 
@@ -6253,6 +6258,14 @@ void __init sched_init(void)
 	init_schedstats();
 
 	scheduler_running = 1;
+
+	/* OFFSCHED */
+	pr_debug("sched: stop\t%llx\n", (unsigned long long int) &stop_sched_class);
+	pr_debug("sched: offsched\t%llx\n", (unsigned long long int) &offsched_sched_class);
+	pr_debug("sched: dl\t%llx\n", (unsigned long long int) &dl_sched_class);
+	pr_debug("sched: rt\t%llx\n", (unsigned long long int) &rt_sched_class);
+	pr_debug("sched: fair\t%llx\n", (unsigned long long int) &fair_sched_class);
+	pr_debug("sched: idle\t%llx\n", (unsigned long long int) &idle_sched_class);
 }
 
 #ifdef CONFIG_DEBUG_ATOMIC_SLEEP

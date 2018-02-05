@@ -3,6 +3,10 @@
 
 extern void offsched_log_init(void);
 
+extern volatile bool offsched_flags[10];
+
+extern volatile unsigned long long offsched_count;
+
 extern int offsched_log_str(const char *str);
 extern int offsched_log_raw(void *ptr, int bytes);
 extern void offsched_log_nl(void);
