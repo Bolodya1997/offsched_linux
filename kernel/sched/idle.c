@@ -1,8 +1,6 @@
 /*
  * Generic entry point for the idle threads
  */
-#define DEBUG
-
 #include <linux/sched.h>
 #include <linux/sched/idle.h>
 #include <linux/cpu.h>
@@ -19,14 +17,6 @@
 #include <trace/events/power.h>
 
 #include "sched.h"
-
-/* OFFSCHED */
-#include <linux/offsched_log.h>
-#define offsched_debug(flag, str, ...) \
-	do \
-		if (unlikely(offsched_flags[flag]) && smp_processor_id() == 2) \
-		pr_debug(str, ##__VA_ARGS__); \
-	while (0)
 
 /* Linker adds these: start and end of __cpuidle functions */
 extern char __cpuidle_text_start[], __cpuidle_text_end[];
@@ -212,6 +202,9 @@ exit_idle:
 	rcu_idle_exit();
 }
 
+/* OFFSCHED: flag to force idle reschedule */
+volatile bool offsched_boot_flag;
+
 /*
  * Generic idle loop implementation
  *
@@ -231,8 +224,7 @@ static void do_idle(void)
 	__current_set_polling();
 	tick_nohz_idle_enter();
 
-	offsched_debug(1, "idle: begin loop\n");
-	while (!need_resched() && !offsched_flags[2]) {
+	while (!need_resched() && !offsched_boot_flag) {
 		check_pgt_cache();
 		rmb();
 
@@ -256,7 +248,6 @@ static void do_idle(void)
 			cpuidle_idle_call();
 		arch_cpu_idle_exit();
 	}
-	offsched_debug(1, "idle: end loop\n");
 
 	/*
 	 * Since we fell out of the loop above, we know TIF_NEED_RESCHED must
@@ -277,7 +268,6 @@ static void do_idle(void)
 	smp_mb__after_atomic();
 
 	sched_ttwu_pending();
-	offsched_debug(1, "idle: schedule\n");
 	schedule_idle();
 
 	if (unlikely(klp_patch_pending(current)))

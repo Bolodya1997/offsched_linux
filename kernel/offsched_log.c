@@ -6,8 +6,6 @@ int offsched_log_str(const char *str);
 
 volatile bool offsched_flags[10];
 
-volatile unsigned long long offsched_count;
-
 static struct {
 	int pos;
 	char data[DATA_SIZE];

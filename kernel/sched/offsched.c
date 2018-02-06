@@ -2,8 +2,6 @@
  * Offsched Scheduling Class (mapped to the SCHED_OFFSCHED policy)
  */
 
-#define DEBUG
-
 #include <linux/smp.h>
 #include <linux/printk.h>
 #include <linux/offsched_log.h>
@@ -23,8 +21,6 @@ void offsched_begin(int cpu)
 	struct rq *rq = cpu_rq(cpu);
 	struct offsched_rq *offsched_rq = &rq->offsched;
 
-	pr_debug("offsched: rq->nr_running = %u\n", rq->nr_running);
-
 	offsched_rq->active = true;
 
 	add_nr_running(rq, offsched_rq->nr_running);
@@ -39,8 +35,6 @@ void offsched_end(int cpu)
 	offsched_rq->active = false;
 
 	sub_nr_running(rq, offsched_rq->nr_running);
-
-	pr_debug("offsched: rq->nr_running = %u\n", rq->nr_running);
 
 	offsched_count = 0;
 }
