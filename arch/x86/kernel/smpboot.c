@@ -1130,8 +1130,6 @@ int native_cpu_up(unsigned int cpu, struct task_struct *tidle)
 	/* the FPU context is blank, nobody can own it */
 	per_cpu(fpu_fpregs_owner_ctx, cpu) = NULL;
 
-	clear_offsched_dead(cpu);	/* OFFSCHED */
-
 	common_cpu_up(cpu, tidle);
 
 	err = do_boot_cpu(apicid, cpu, tidle);
@@ -1710,6 +1708,7 @@ void native_play_dead(void)
 	set_offsched_dead(cpu);
 	if (is_offsched_callback(cpu))
 		run_offsched_callback();
+	clear_offsched_dead(cpu);
 
 	idle_task_exit();
         reset_lazy_tlbstate();

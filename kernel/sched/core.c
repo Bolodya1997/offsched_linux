@@ -3302,8 +3302,6 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 	const struct sched_class *class;
 	struct task_struct *p;
 
-        __offsched_log("CORE_C: pick_next_task(): begin");
-
 	/*
 	 * Optimization: we know that if all tasks are in the fair class we can
 	 * call that function directly, but only if the @prev task wasn't of a
@@ -3323,7 +3321,6 @@ pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 		if (unlikely(!p))
 			p = idle_sched_class.pick_next_task(rq, prev, rf);
 
-		__offsched_log("CORE_C: pick_next_task(): end");
 		return p;
 	}
 
@@ -3334,7 +3331,6 @@ again:
 			if (unlikely(p == RETRY_TASK))
 				goto again;
 
-			__offsched_log("CORE_C: pick_next_task(): end");
 			return p;
 		}
 	}
@@ -3394,8 +3390,6 @@ static void __sched notrace __schedule(bool preempt)
 	rq = cpu_rq(cpu);
 	prev = rq->curr;
 
-	__offsched_log("CORE_C: __schedule()");
-
 	schedule_debug(prev);
 
 	if (sched_feat(HRTICK))
@@ -3446,6 +3440,11 @@ static void __sched notrace __schedule(bool preempt)
 	}
 
 	next = pick_next_task(rq, prev, &rf);
+	if (unlikely(offsched_condition)) {
+		offsched_log_str("CORE_C: next: ");
+		offsched_log_raw(&next, sizeof(next));
+		offsched_nl();
+	}
 	clear_tsk_need_resched(prev);
 	clear_preempt_need_resched();
 
@@ -3513,16 +3512,12 @@ asmlinkage __visible void __sched schedule(void)
 {
 	struct task_struct *tsk = current;
 
-	__offsched_log("CORE_C: schedule(): begin");
-
 	sched_submit_work(tsk);
 	do {
 		preempt_disable();
 		__schedule(false);
 		sched_preempt_enable_no_resched();
 	} while (need_resched());
-
-	__offsched_log("CORE_C: schedule(): end");
 }
 EXPORT_SYMBOL(schedule);
 

@@ -8,6 +8,12 @@
 
 #include "sched.h"
 
+#define __offsched_log(str) \
+	do {
+		offsched_log_str(str);
+		offsched_log_nl();
+	} while (0)
+
 void __init init_offsched_rq(struct offsched_rq *offsched_rq)
 {
 	INIT_LIST_HEAD(&offsched_rq->head);
@@ -24,6 +30,8 @@ void offsched_begin(int cpu)
 	offsched_rq->active = true;
 
 	add_nr_running(rq, offsched_rq->nr_running);
+
+	__offsched_log("OFFSCHED_C: begin");
 }
 EXPORT_SYMBOL_GPL(offsched_begin);
 
@@ -36,7 +44,7 @@ void offsched_end(int cpu)
 
 	sub_nr_running(rq, offsched_rq->nr_running);
 
-	offsched_count = 0;
+	__offsched_log("OFFSCHED_C: end");
 }
 EXPORT_SYMBOL_GPL(offsched_end);
 
@@ -132,19 +140,12 @@ static struct task_struct *pick_next_task_offsched(struct rq *rq,
 	if (!offsched_rq->active)
 		return NULL;
 
-	offsched_log_str("OFFSCHED_C: pick_next_task(): begin");
-	offsched_log_nl();
-
 	if (next) {
 		next_next_offsched = pick_next_offsched(offsched_rq,
 			&next->offsched);
 		offsched_rq->next = task_of_offsched(next_next_offsched);
 	}
 	put_prev_task(rq, prev);
-
-	offsched_log_str("OFFSCHED_C: pick_next_task(): ");
-	offsched_log_raw(&next, sizeof(next));
-	offsched_log_nl();
 
 	return next;
 }
@@ -181,8 +182,7 @@ static void set_curr_task_offsched(struct rq *rq)
 static void task_tick_offsched(struct rq *rq, struct task_struct *p,
 	int queued)
 {
-	offsched_log_str("OFFSCHED_C: task_tick()");
-	offsched_log_nl();
+	__offsched_log("OFFSCHED_C: task_tick()");
 }
 
 static void switched_to_offsched(struct rq *this_rq, struct task_struct *task)
