@@ -2377,7 +2377,8 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	 * Revert to default priority/policy on fork if requested.
 	 */
 	if (unlikely(p->sched_reset_on_fork)) {
-		if (task_has_dl_policy(p) || task_has_rt_policy(p)) {
+		if (task_has_dl_policy(p) || task_has_rt_policy(p) ||
+				task_has_offsched_policy(p)) {
 			p->policy = SCHED_NORMAL;
 			p->static_prio = NICE_TO_PRIO(0);
 			p->rt_priority = 0;
@@ -2402,6 +2403,9 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	} else {
 		p->sched_class = &fair_sched_class;
 	}
+
+	if (task_has_offsched_policy(p))
+		p->sched_class = &offsched_sched_class;
 
 	init_entity_runnable_average(&p->se);
 
@@ -3443,7 +3447,7 @@ static void __sched notrace __schedule(bool preempt)
 	if (unlikely(offsched_condition)) {
 		offsched_log_str("CORE_C: next: ");
 		offsched_log_raw(&next, sizeof(next));
-		offsched_nl();
+		offsched_log_nl();
 	}
 	clear_tsk_need_resched(prev);
 	clear_preempt_need_resched();
@@ -6237,6 +6241,12 @@ void __init sched_init(void)
 	init_schedstats();
 
 	scheduler_running = 1;
+
+	/* OFFSCHED DEBUG */
+	printk("scheduler: dl_sched_class\t%llx\n", (unsigned long long int) &dl_sched_class);
+	printk("scheduler: rt_sched_class\t%llx\n", (unsigned long long int) &rt_sched_class);
+	printk("scheduler: offsched_sched_class\t%llx\n", (unsigned long long int) &offsched_sched_class);
+	printk("scheduler: fair_sched_class\t%llx\n", (unsigned long long int) &fair_sched_class);
 }
 
 #ifdef CONFIG_DEBUG_ATOMIC_SLEEP

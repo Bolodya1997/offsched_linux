@@ -9,9 +9,9 @@
 #include "sched.h"
 
 #define __offsched_log(str) \
-	do {
-		offsched_log_str(str);
-		offsched_log_nl();
+	do { \
+		offsched_log_str(str); \
+		offsched_log_nl(); \
 	} while (0)
 
 void __init init_offsched_rq(struct offsched_rq *offsched_rq)
