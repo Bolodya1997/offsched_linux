@@ -501,6 +501,7 @@ struct wake_q_node {
 /* OFFSCHED */
 struct offsched_entity {
 	struct list_head	list;
+	int			cpu;
 };
 
 struct task_struct {

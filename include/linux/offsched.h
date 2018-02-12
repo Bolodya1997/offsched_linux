@@ -17,6 +17,7 @@ extern void run_offsched_callback(void);
 
 extern void offsched_begin(int cpu);
 extern void offsched_end(int cpu);
+extern unsigned int offsched_total(int cpu);
 
 extern struct task_struct *offsched_task(int cpu);
 

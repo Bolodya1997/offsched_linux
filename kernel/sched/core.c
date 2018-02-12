@@ -39,10 +39,18 @@
 /* OFFSCHED */
 #include <linux/offsched.h>
 #include <linux/offsched_log.h>
-#define offsched_condition (cpu_offsched(smp_processor_id()))
-#define __offsched_log(str) \
+#define offsched_condition(cpu) (cpu_offsched(cpu))
+#define __offsched_raw(cpu, str, raw) \
+	do { \
+		if (unlikely(offsched_condition(cpu))) { \
+			offsched_log_str(str); \
+			offsched_log_raw(&raw, sizeof(raw)); \
+			offsched_log_nl(); \
+		} \
+	} while (0)
+#define __offsched_log(cpu, str) \
 	do \
-		if (unlikely(offsched_condition)) { \
+		if (unlikely(offsched_condition(cpu))) { \
 			offsched_log_str(str); \
 			offsched_log_nl(); \
 		} \
@@ -1570,6 +1578,8 @@ out:
 static inline
 int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 {
+	bool offsched_flag;
+
 	lockdep_assert_held(&p->pi_lock);
 
 	if (p->nr_cpus_allowed > 1)
@@ -1587,9 +1597,12 @@ int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 	 * [ this allows ->select_task() to simply return task_cpu(p) and
 	 *   not worry about this generic constraint ]
 	 */
+	offsched_flag = cpu_offsched(cpu) &&
+		p->sched_class == &offsched_sched_class;
 	if (unlikely(!cpumask_test_cpu(cpu, &p->cpus_allowed) ||
-		     (!cpu_online(cpu) && !cpu_offsched(cpu))))		/* OFFSCHED */
+			!(cpu_online(cpu) || offsched_flag))) {
 		cpu = select_fallback_rq(task_cpu(p), p);
+	}
 
 	return cpu;
 }
@@ -1766,6 +1779,7 @@ void sched_ttwu_pending(void)
 
 	rq_unlock_irqrestore(rq, &rf);
 }
+EXPORT_SYMBOL(sched_ttwu_pending);
 
 void scheduler_ipi(void)
 {
@@ -2068,6 +2082,9 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 		set_task_cpu(p, cpu);
 	}
 
+	if (unlikely(offsched_condition(cpu) && p->sched_class != &offsched_sched_class))
+		BUG();
+
 #else /* CONFIG_SMP */
 
 	if (p->in_iowait) {
@@ -2212,6 +2229,8 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 	p->rt.time_slice	= sched_rr_timeslice;
 	p->rt.on_rq		= 0;
 	p->rt.on_list		= 0;
+
+	p->offsched.cpu = -1;
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
 	INIT_HLIST_HEAD(&p->preempt_notifiers);
@@ -3444,11 +3463,7 @@ static void __sched notrace __schedule(bool preempt)
 	}
 
 	next = pick_next_task(rq, prev, &rf);
-	if (unlikely(offsched_condition)) {
-		offsched_log_str("CORE_C: next: ");
-		offsched_log_raw(&next, sizeof(next));
-		offsched_log_nl();
-	}
+	__offsched_raw("cpu, CORE_C: next: ", next);
 	clear_tsk_need_resched(prev);
 	clear_preempt_need_resched();
 

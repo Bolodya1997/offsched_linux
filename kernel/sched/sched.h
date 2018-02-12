@@ -577,6 +577,7 @@ struct dl_rq {
 struct offsched_rq {
 	struct list_head head;
 	unsigned int nr_running;
+	unsigned int nr_total;
 	bool active;
 	struct task_struct *next;
 };
