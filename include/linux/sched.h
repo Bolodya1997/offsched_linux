@@ -502,6 +502,7 @@ struct wake_q_node {
 struct offsched_entity {
 	struct list_head	list;
 	int			cpu;
+	unsigned long		jiffies;
 };
 
 struct task_struct {

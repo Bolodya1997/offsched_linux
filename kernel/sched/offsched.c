@@ -5,6 +5,10 @@
 #include <linux/smp.h>
 #include <linux/printk.h>
 #include <linux/offsched_log.h>
+#include <linux/jiffies.h>
+#include <linux/kernel_stat.h>
+#include <linux/rcupdate.h>
+#include <linux/offsched.h>
 
 #include "sched.h"
 
@@ -104,7 +108,7 @@ static void enqueue_task_offsched(struct rq *rq, struct task_struct *p,
 		offsched->cpu = rq->cpu;
 		offsched_rq->nr_total++;
 
-		__offsched_raw("OFFSCHED_C: total++\t: ", offsched_rq->nr_total);
+		offsched->jiffies = jiffies;
 	}
 
 	if (offsched_rq->active)
@@ -163,14 +167,26 @@ static struct task_struct *pick_next_task_offsched(struct rq *rq,
 		next_next_offsched = pick_next_offsched(offsched_rq,
 			&next->offsched);
 		offsched_rq->next = task_of_offsched(next_next_offsched);
+
+		put_prev_task(rq, prev);	/* account_offsched_time() if prev == next */
+
+		next->offsched.jiffies = jiffies;
 	}
- 	put_prev_task(rq, prev);
 
 	return next;
 }
 
+static inline void account_offsched_time(struct task_struct *p)
+{
+	struct offsched_entity *offsched = &p->offsched;
+	u64 cputime = (jiffies - offsched->jiffies) * TICK_NSEC;
+
+	account_user_time(p, cputime);
+}
+
 static void put_prev_task_offsched(struct rq *rq, struct task_struct *p)
 {
+	account_offsched_time(p);
 }
 
 static int select_task_rq_offsched(struct task_struct *p, int task_cpu,
@@ -204,7 +220,7 @@ static void set_curr_task_offsched(struct rq *rq)
 static void task_tick_offsched(struct rq *rq, struct task_struct *p,
 	int queued)
 {
-	__offsched_log("OFFSCHED_C: task_tick()");
+	BUG_ON(cpu_offsched(rq->cpu));
 }
 
 static void task_dead_offsched(struct task_struct *p)
@@ -214,8 +230,6 @@ static void task_dead_offsched(struct task_struct *p)
 	struct offsched_rq *offsched_rq = &rq->offsched;
 
 	offsched_rq->nr_total--;
-
-	__offsched_raw("OFFSCHED_C: total--\t: ", offsched_rq->nr_total);
 }
 
 static void switched_to_offsched(struct rq *this_rq, struct task_struct *task)
@@ -241,7 +255,7 @@ const struct sched_class offsched_sched_class = {
 	.check_preempt_curr	= &check_preempt_curr_offsched,		/* Empty */
 
 	.pick_next_task		= &pick_next_task_offsched,
-	.put_prev_task		= &put_prev_task_offsched,		/* Empty */
+	.put_prev_task		= &put_prev_task_offsched,
 
 	.select_task_rq		= &select_task_rq_offsched,
 

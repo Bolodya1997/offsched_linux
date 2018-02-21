@@ -1,8 +1,6 @@
 #ifndef _LINUX_OFFSCHED_H
 #define _LINUX_OFFSCHED_H
 
-#include <linux/sched.h>
-
 extern void set_offsched_dead(int cpu);
 extern void clear_offsched_dead(int cpu);
 extern int is_offsched_dead(int cpu);
@@ -18,7 +16,5 @@ extern void run_offsched_callback(void);
 extern void offsched_begin(int cpu);
 extern void offsched_end(int cpu);
 extern unsigned int offsched_total(int cpu);
-
-extern struct task_struct *offsched_task(int cpu);
 
 #endif /* _LINUX_OFFSCHED_H */
