@@ -1784,7 +1784,6 @@ void sched_ttwu_pending(void)
 
 	rq_unlock_irqrestore(rq, &rf);
 }
-EXPORT_SYMBOL(sched_ttwu_pending);
 
 void scheduler_ipi(void)
 {

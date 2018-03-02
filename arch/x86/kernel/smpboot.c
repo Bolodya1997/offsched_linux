@@ -1705,10 +1705,8 @@ void native_play_dead(void)
 	tboot_shutdown(TB_SHUTDOWN_WFS);
 
 	/* OFFSCHED */
-	set_offsched_dead(cpu);
 	if (is_offsched_callback(cpu))
 		run_offsched_callback();
-	clear_offsched_dead(cpu);
 
 	idle_task_exit();
         reset_lazy_tlbstate();

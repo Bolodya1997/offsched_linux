@@ -8,7 +8,6 @@
 #include <linux/jiffies.h>
 #include <linux/kernel_stat.h>
 #include <linux/rcupdate.h>
-#include <linux/offsched.h>
 
 #include "sched.h"
 
@@ -32,41 +31,6 @@ void __init init_offsched_rq(struct offsched_rq *offsched_rq)
 	offsched_rq->active = false;
 	offsched_rq->next = NULL;
 }
-
-void offsched_begin(int cpu)
-{
-	struct rq *rq = cpu_rq(cpu);
-	struct offsched_rq *offsched_rq = &rq->offsched;
-
-	offsched_rq->active = true;
-
-	add_nr_running(rq, offsched_rq->nr_running);
-
-	__offsched_log("OFFSCHED_C: begin");
-}
-EXPORT_SYMBOL_GPL(offsched_begin);
-
-void offsched_end(int cpu)
-{
-	struct rq *rq = cpu_rq(cpu);
-	struct offsched_rq *offsched_rq = &rq->offsched;
-
-	offsched_rq->active = false;
-
-	sub_nr_running(rq, offsched_rq->nr_running);
-
-	__offsched_log("OFFSCHED_C: end");
-}
-EXPORT_SYMBOL_GPL(offsched_end);
-
-unsigned int offsched_total(int cpu)
-{
-	struct rq *rq = cpu_rq(cpu);
-	struct offsched_rq *offsched_rq = &rq->offsched;
-
-	return offsched_rq->nr_total;
-}
-EXPORT_SYMBOL_GPL(offsched_total);
 
 static inline
 struct task_struct *task_of_offsched(struct offsched_entity *offsched)
@@ -106,9 +70,9 @@ static void enqueue_task_offsched(struct rq *rq, struct task_struct *p,
 
 	if (unlikely(offsched->cpu != rq->cpu)) {
 		offsched->cpu = rq->cpu;
-		offsched_rq->nr_total++;
-
 		offsched->jiffies = jiffies;
+
+		offsched_rq->nr_total++;
 	}
 
 	if (offsched_rq->active)
@@ -168,7 +132,8 @@ static struct task_struct *pick_next_task_offsched(struct rq *rq,
 			&next->offsched);
 		offsched_rq->next = task_of_offsched(next_next_offsched);
 
-		put_prev_task(rq, prev);	/* account_offsched_time() if prev == next */
+		/* account_offsched_time() if prev == next */
+		put_prev_task(rq, prev);
 
 		next->offsched.jiffies = jiffies;
 	}
@@ -230,6 +195,8 @@ static void task_dead_offsched(struct task_struct *p)
 	struct offsched_rq *offsched_rq = &rq->offsched;
 
 	offsched_rq->nr_total--;
+
+	__offsched_raw("OFFSCHED_C: task_dead(): ", p);
 }
 
 static void switched_to_offsched(struct rq *this_rq, struct task_struct *task)
@@ -273,3 +240,49 @@ const struct sched_class offsched_sched_class = {
 
 	.update_curr		= &update_curr_offsched			/* Empty */
 };
+
+void offsched_begin(void)
+{
+	struct rq *rq = cpu_rq(smp_processor_id());
+	struct offsched_rq *offsched_rq = &rq->offsched;
+
+	offsched_rq->active = true;
+
+	add_nr_running(rq, offsched_rq->nr_running);
+
+	rcu_expedite_gp();
+
+	__offsched_log("OFFSCHED_C: begin");
+}
+EXPORT_SYMBOL(offsched_begin);
+
+void offsched_end(void)
+{
+	struct rq *rq = cpu_rq(smp_processor_id());
+	struct offsched_rq *offsched_rq = &rq->offsched;
+
+	offsched_rq->active = false;
+
+	sub_nr_running(rq, offsched_rq->nr_running);
+
+	rcu_unexpedite_gp();
+
+	__offsched_log("OFFSCHED_C: end");
+}
+EXPORT_SYMBOL(offsched_end);
+
+void offsched_idle(void)
+{
+	struct rq *rq = cpu_rq(smp_processor_id());
+	struct offsched_rq *offsched_rq = &rq->offsched;
+	int i;
+
+	while (offsched_rq->nr_total > 0) {
+		sched_ttwu_pending();
+		schedule();
+
+		for (i = 0; i < 1000000; i++) {
+		}
+	}
+}
+EXPORT_SYMBOL(offsched_idle);

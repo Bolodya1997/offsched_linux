@@ -38,6 +38,7 @@
 #include <asm/switch_to.h>
 #include <asm/desc.h>
 #include <asm/prctl.h>
+#include <linux/cpumask.h>
 
 /*
  * per-CPU TSS segments. Threads are completely 'soft' on Linux,
@@ -620,63 +621,50 @@ long do_arch_prctl_common(struct task_struct *task, int option,
 }
 
 /* OFFSCHED */
-struct hotplug_cpu {
-	long flags;
-	void (*hotplug_cpu_dead)(void);
+struct cpumask __cpu_offsched_mask __read_mostly
+	= CPU_MASK_NONE;
+EXPORT_SYMBOL(__cpu_offsched_mask);
+
+struct offsched_cpu {
+	void (*callback)(void);
 };
 
-#define CPU_OFFSCHED_CALLBACK	01
-#define CPU_OFFSCHED_DEAD	02
+DEFINE_PER_CPU(struct offsched_cpu, __offsched_cpu);
 
-DEFINE_PER_CPU(struct hotplug_cpu, offschedcpu);
-
-void set_offsched_dead(int cpuid)
+int register_offsched_callback(void (*offsched_callback)(void), int cpuid)
 {
-	struct hotplug_cpu *cpu = &per_cpu(offschedcpu, cpuid);
-	set_bit(CPU_OFFSCHED_DEAD, &cpu->flags);
-}
+	struct offsched_cpu *cpu = &per_cpu(__offsched_cpu, cpuid);
 
-void clear_offsched_dead(int cpuid)
-{
-	struct hotplug_cpu *cpu = &per_cpu(offschedcpu, cpuid);
-	clear_bit(CPU_OFFSCHED_DEAD, &cpu->flags);
-}
-
-int is_offsched_dead(int cpuid)
-{
-	struct hotplug_cpu *cpu = &per_cpu(offschedcpu, cpuid);
-	return test_bit(CPU_OFFSCHED_DEAD, &cpu->flags);
-}
-
-int is_offsched_callback(int cpuid)
-{
-	struct hotplug_cpu *cpu = &per_cpu(offschedcpu, cpuid);
-	return test_bit(CPU_OFFSCHED_CALLBACK, &cpu->flags);
-}
-EXPORT_SYMBOL_GPL(is_offsched_callback);
-
-int register_offsched_callback(void(*offsched_callback)(void), int cpuid)
-{
-	struct hotplug_cpu *cpu = &per_cpu(offschedcpu, cpuid);
-	if (is_offsched_callback(cpuid))
+	if (cpu->callback)
 		return -1;
-	cpu->hotplug_cpu_dead = offsched_callback;
-	set_bit(CPU_OFFSCHED_CALLBACK, &cpu->flags);
+
+	cpu->callback = offsched_callback;
+
 	return 0;
 }
-EXPORT_SYMBOL_GPL(register_offsched_callback);
+EXPORT_SYMBOL(register_offsched_callback);
 
 void unregister_offsched_callback(int cpuid)
 {
-	struct hotplug_cpu *cpu = &per_cpu(offschedcpu, cpuid);
-	cpu->hotplug_cpu_dead = NULL;
-	clear_bit(CPU_OFFSCHED_CALLBACK, &cpu->flags);
+	struct offsched_cpu *cpu = &per_cpu(__offsched_cpu, cpuid);
+
+	cpu->callback = NULL;
 }
-EXPORT_SYMBOL_GPL(unregister_offsched_callback);
+EXPORT_SYMBOL(unregister_offsched_callback);
+
+bool is_offsched_callback(int cpuid)
+{
+	struct offsched_cpu *cpu = &per_cpu(__offsched_cpu, cpuid);
+
+	return cpu->callback == NULL;
+}
 
 void run_offsched_callback(void)
 {
 	int cpuid = raw_smp_processor_id();
-	struct hotplug_cpu *cpu = &per_cpu(offschedcpu, cpuid);
-	cpu->hotplug_cpu_dead();
+	struct offsched_cpu *cpu = &per_cpu(__offsched_cpu, cpuid);
+
+	set_cpu_offsched(cpuid, true);
+	cpu->callback();
+	set_cpu_offsched(cpuid, false);
 }
