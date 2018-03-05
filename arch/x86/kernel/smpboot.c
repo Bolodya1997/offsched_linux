@@ -56,6 +56,7 @@
 #include <linux/stackprotector.h>
 #include <linux/gfp.h>
 #include <linux/cpuidle.h>
+#include <linux/offsched.h>
 
 #include <asm/acpi.h>
 #include <asm/desc.h>
@@ -1483,7 +1484,8 @@ int common_cpu_die(unsigned int cpu)
 	/* They ack this in play_dead() by setting CPU_DEAD */
 	if (cpu_wait_death(cpu, 5)) {
 		if (system_state == SYSTEM_RUNNING)
-			pr_info("CPU %u is now offline\n", cpu);
+			pr_info("CPU %u is now offline %s\n", cpu,
+				is_offsched_callback(cpu) ? "and OFFSCHED callback is set" : "");
 	} else {
 		pr_err("CPU %u didn't die...\n", cpu);
 		ret = -1;
@@ -1499,8 +1501,6 @@ void native_cpu_die(unsigned int cpu)
 
 void play_dead_common(void)
 {
-	idle_task_exit();
-
 	/* Ack it */
 	(void)cpu_report_death();
 
@@ -1607,8 +1607,16 @@ void hlt_play_dead(void)
 
 void native_play_dead(void)
 {
+	int cpu = raw_smp_processor_id();
+
 	play_dead_common();
 	tboot_shutdown(TB_SHUTDOWN_WFS);
+
+	/* OFFSCHED */
+	if (is_offsched_callback(cpu))
+		run_offsched_callback();
+
+	idle_task_exit();
 
 	mwait_play_dead();	/* Only returns on failure */
 	if (cpuidle_play_dead())

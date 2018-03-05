@@ -39,6 +39,26 @@
 #include "../workqueue_internal.h"
 #include "../smpboot.h"
 
+/* OFFSCHED */
+#include <linux/offsched.h>
+#include <linux/offsched_log.h>
+#define offsched_condition(cpu) (cpu_offsched(cpu))
+#define __offsched_raw(cpu, str, raw) \
+	do { \
+		if (unlikely(offsched_condition(cpu))) { \
+			offsched_log_str(str); \
+			offsched_log_raw(&raw, sizeof(raw)); \
+			offsched_log_nl(); \
+		} \
+	} while (0)
+#define __offsched_log(cpu, str) \
+	do \
+		if (unlikely(offsched_condition(cpu))) { \
+			offsched_log_str(str); \
+			offsched_log_nl(); \
+		} \
+	while (0)
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
 
@@ -521,11 +541,16 @@ void resched_cpu(int cpu)
  * We don't do similar optimization for completely idle system, as
  * selecting an idle CPU will add more delays to the timers than intended
  * (as that CPU's timer base may not be uptodate wrt jiffies etc).
+ *
+ * OFFSCHED: select CPU 0.
  */
 int get_nohz_timer_target(void)
 {
 	int i, cpu = smp_processor_id();
 	struct sched_domain *sd;
+
+	if (unlikely(cpu_offsched(cpu)))
+		return 0;
 
 	if (!idle_cpu(cpu) && housekeeping_cpu(cpu, HK_FLAG_TIMER))
 		return cpu;
@@ -1547,6 +1572,8 @@ out:
 static inline
 int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 {
+	bool offsched_flag;
+
 	lockdep_assert_held(&p->pi_lock);
 
 	if (p->nr_cpus_allowed > 1)
@@ -1564,9 +1591,12 @@ int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 	 * [ this allows ->select_task() to simply return task_cpu(p) and
 	 *   not worry about this generic constraint ]
 	 */
+	offsched_flag = cpu_offsched(cpu) &&
+		p->sched_class == &offsched_sched_class;
 	if (unlikely(!cpumask_test_cpu(cpu, &p->cpus_allowed) ||
-		     !cpu_online(cpu)))
+			!(cpu_online(cpu) || offsched_flag))) {
 		cpu = select_fallback_rq(task_cpu(p), p);
+	}
 
 	return cpu;
 }
@@ -2066,6 +2096,9 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 		set_task_cpu(p, cpu);
 	}
 
+	if (unlikely(offsched_condition(cpu) && p->sched_class != &offsched_sched_class))
+		BUG();
+
 #else /* CONFIG_SMP */
 
 	if (p->in_iowait) {
@@ -2194,6 +2227,8 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 	p->rt.time_slice	= sched_rr_timeslice;
 	p->rt.on_rq		= 0;
 	p->rt.on_list		= 0;
+
+	p->offsched.cpu = -1;
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
 	INIT_HLIST_HEAD(&p->preempt_notifiers);
@@ -2359,7 +2394,8 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	 * Revert to default priority/policy on fork if requested.
 	 */
 	if (unlikely(p->sched_reset_on_fork)) {
-		if (task_has_dl_policy(p) || task_has_rt_policy(p)) {
+		if (task_has_dl_policy(p) || task_has_rt_policy(p) ||
+				task_has_offsched_policy(p)) {
 			p->policy = SCHED_NORMAL;
 			p->static_prio = NICE_TO_PRIO(0);
 			p->rt_priority = 0;
@@ -2384,6 +2420,9 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	} else {
 		p->sched_class = &fair_sched_class;
 	}
+
+	if (task_has_offsched_policy(p))
+		p->sched_class = &offsched_sched_class;
 
 	init_entity_runnable_average(&p->se);
 
@@ -3988,7 +4027,10 @@ static void __setscheduler(struct rq *rq, struct task_struct *p,
 	if (keep_boost)
 		p->prio = rt_effective_prio(p, p->prio);
 
-	if (dl_prio(p->prio))
+	/* OFFSCHED */
+	if (offsched_policy(p->policy))
+		p->sched_class = &offsched_sched_class;
+	else if (dl_prio(p->prio))
 		p->sched_class = &dl_sched_class;
 	else if (rt_prio(p->prio))
 		p->sched_class = &rt_sched_class;
@@ -5895,6 +5937,7 @@ void __init sched_init(void)
 		init_cfs_rq(&rq->cfs);
 		init_rt_rq(&rq->rt);
 		init_dl_rq(&rq->dl);
+		init_offsched_rq(&rq->offsched);	/* OFFSCHED */
 #ifdef CONFIG_FAIR_GROUP_SCHED
 		root_task_group.shares = ROOT_TASK_GROUP_LOAD;
 		INIT_LIST_HEAD(&rq->leaf_cfs_rq_list);

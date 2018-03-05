@@ -140,10 +140,18 @@ static inline int dl_policy(int policy)
 {
 	return policy == SCHED_DEADLINE;
 }
+
+/* OFFSCHED */
+static inline int offsched_policy(int policy)
+{
+	return policy == SCHED_OFFSCHED;
+}
+
 static inline bool valid_policy(int policy)
 {
 	return idle_policy(policy) || fair_policy(policy) ||
-		rt_policy(policy) || dl_policy(policy);
+		rt_policy(policy) || dl_policy(policy) ||
+		offsched_policy(policy);	/* OFFSCHED */
 }
 
 static inline int task_has_rt_policy(struct task_struct *p)
@@ -154,6 +162,11 @@ static inline int task_has_rt_policy(struct task_struct *p)
 static inline int task_has_dl_policy(struct task_struct *p)
 {
 	return dl_policy(p->policy);
+}
+
+static inline int task_has_offsched_policy(struct task_struct *p)
+{
+	return offsched_policy(p->policy);
 }
 
 /*
@@ -602,6 +615,15 @@ struct dl_rq {
 	u64 bw_ratio;
 };
 
+/* OFFSCHED */
+struct offsched_rq {
+	struct list_head head;
+	unsigned int nr_running;
+	unsigned int nr_total;
+	bool active;
+	struct task_struct *next;
+};
+
 #ifdef CONFIG_SMP
 
 static inline bool sched_asym_prefer(int a, int b)
@@ -712,6 +734,7 @@ struct rq {
 	struct cfs_rq cfs;
 	struct rt_rq rt;
 	struct dl_rq dl;
+	struct offsched_rq offsched;	/* OFFSCHED */
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* list of leaf cfs_rq on this cpu: */
@@ -1515,6 +1538,7 @@ static inline void set_curr_task(struct rq *rq, struct task_struct *curr)
    for (class = sched_class_highest; class; class = class->next)
 
 extern const struct sched_class stop_sched_class;
+extern const struct sched_class offsched_sched_class;	/* OFFSCHED */
 extern const struct sched_class dl_sched_class;
 extern const struct sched_class rt_sched_class;
 extern const struct sched_class fair_sched_class;
@@ -2008,6 +2032,7 @@ print_numa_stats(struct seq_file *m, int node, unsigned long tsf,
 extern void init_cfs_rq(struct cfs_rq *cfs_rq);
 extern void init_rt_rq(struct rt_rq *rt_rq);
 extern void init_dl_rq(struct dl_rq *dl_rq);
+extern void init_offsched_rq(struct offsched_rq *offsched_rq);	/* OFFSCHED */
 
 extern void cfs_bandwidth_usage_inc(void);
 extern void cfs_bandwidth_usage_dec(void);

@@ -517,6 +517,13 @@ struct wake_q_node {
 	struct wake_q_node *next;
 };
 
+/* OFFSCHED */
+struct offsched_entity {
+	struct list_head	list;
+	int			cpu;
+	unsigned long		jiffies;
+};
+
 struct task_struct {
 #ifdef CONFIG_THREAD_INFO_IN_TASK
 	/*
@@ -563,6 +570,7 @@ struct task_struct {
 	const struct sched_class	*sched_class;
 	struct sched_entity		se;
 	struct sched_rt_entity		rt;
+	struct offsched_entity		offsched;	/* OFFSCHED */
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group		*sched_task_group;
 #endif

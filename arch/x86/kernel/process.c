@@ -39,6 +39,7 @@
 #include <asm/switch_to.h>
 #include <asm/desc.h>
 #include <asm/prctl.h>
+#include <linux/cpumask.h>
 
 /*
  * per-CPU TSS segments. Threads are completely 'soft' on Linux,
@@ -649,4 +650,53 @@ long do_arch_prctl_common(struct task_struct *task, int option,
 	}
 
 	return -EINVAL;
+}
+
+/* OFFSCHED */
+struct cpumask __cpu_offsched_mask __read_mostly
+	= CPU_MASK_NONE;
+EXPORT_SYMBOL(__cpu_offsched_mask);
+
+struct offsched_cpu {
+	void (*callback)(void);
+};
+
+DEFINE_PER_CPU(struct offsched_cpu, __offsched_cpu);
+
+int register_offsched_callback(void (*offsched_callback)(void), int cpuid)
+{
+	struct offsched_cpu *cpu = &per_cpu(__offsched_cpu, cpuid);
+
+	if (cpu->callback)
+		return -1;
+
+	cpu->callback = offsched_callback;
+
+	return 0;
+}
+EXPORT_SYMBOL(register_offsched_callback);
+
+void unregister_offsched_callback(int cpuid)
+{
+	struct offsched_cpu *cpu = &per_cpu(__offsched_cpu, cpuid);
+
+	cpu->callback = NULL;
+}
+EXPORT_SYMBOL(unregister_offsched_callback);
+
+bool is_offsched_callback(int cpuid)
+{
+	struct offsched_cpu *cpu = &per_cpu(__offsched_cpu, cpuid);
+
+	return cpu->callback == NULL;
+}
+
+void run_offsched_callback(void)
+{
+	int cpuid = raw_smp_processor_id();
+	struct offsched_cpu *cpu = &per_cpu(__offsched_cpu, cpuid);
+
+	set_cpu_offsched(cpuid, true);
+	cpu->callback();
+	set_cpu_offsched(cpuid, false);
 }
