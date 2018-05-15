@@ -541,16 +541,11 @@ void resched_cpu(int cpu)
  * We don't do similar optimization for completely idle system, as
  * selecting an idle CPU will add more delays to the timers than intended
  * (as that CPU's timer base may not be uptodate wrt jiffies etc).
- *
- * OFFSCHED: select CPU 0.
  */
 int get_nohz_timer_target(void)
 {
 	int i, cpu = smp_processor_id();
 	struct sched_domain *sd;
-
-	if (unlikely(cpu_offsched(cpu)))
-		return 0;
 
 	if (!idle_cpu(cpu) && housekeeping_cpu(cpu, HK_FLAG_TIMER))
 		return cpu;

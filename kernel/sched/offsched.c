@@ -127,6 +127,10 @@ static struct task_struct *pick_next_task_offsched(struct rq *rq,
 	if (!offsched_rq->active)
 		return NULL;
 
+	/* check if there are sleeping tasks */
+	if (offsched_rq->nr_running != offsched_rq->nr_total)
+		sched_ttwu_pending();
+
 	if (next) {
 		next_next_offsched = pick_next_offsched(offsched_rq,
 			&next->offsched);
